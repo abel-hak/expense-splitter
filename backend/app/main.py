@@ -8,7 +8,8 @@ from app.routers import auth, groups, expenses, settlements
 
 Base.metadata.create_all(bind=engine)
 
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+_origins_env = os.getenv("ALLOWED_ORIGINS", "")
+allowed_origins = [o.strip() for o in _origins_env.split(",") if o.strip()] if _origins_env else ["*"]
 
 app = FastAPI(
     title="Expense Splitter API",
