@@ -386,7 +386,13 @@ def chat(
     )
 
     chat_session = model.start_chat()
-    response = chat_session.send_message(data.message)
+    try:
+        response = chat_session.send_message(data.message)
+    except Exception as exc:
+        err_msg = str(exc)
+        if "quota" in err_msg.lower() or "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
+            return ChatResponse(reply="The AI service is temporarily at capacity. Please try again in a minute.")
+        raise HTTPException(status_code=502, detail=f"AI service error: {err_msg}")
 
     part = response.candidates[0].content.parts[0]
 
