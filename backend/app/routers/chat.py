@@ -5,8 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
 from app.database import get_db
 from app.models import User, Group, Expense, Payment
@@ -23,88 +22,81 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 # ---------------------------------------------------------------------------
 
 _FUNCTIONS = [
-    {
-        "name": "add_expense",
-        "description": "Add a new expense to a group. The current user is the payer unless stated otherwise.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "group_name": {"type": "string", "description": "Name of the group to add the expense to."},
-                "amount": {"type": "number", "description": "Total expense amount."},
-                "description": {"type": "string", "description": "Short description of the expense (e.g. 'dinner', 'taxi')."},
-                "category": {
-                    "type": "string",
-                    "description": f"Expense category. Must be one of: {', '.join(EXPENSE_CATEGORIES)}.",
-                },
-                "participant_names": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "Names or emails of people to split with. Use 'all' to include everyone in the group.",
-                },
+    genai.protos.FunctionDeclaration(
+        name="add_expense",
+        description="Add a new expense to a group. The current user is the payer unless stated otherwise.",
+        parameters=genai.protos.Schema(
+            type=genai.protos.Type.OBJECT,
+            properties={
+                "group_name": genai.protos.Schema(type=genai.protos.Type.STRING, description="Name of the group to add the expense to."),
+                "amount": genai.protos.Schema(type=genai.protos.Type.NUMBER, description="Total expense amount."),
+                "description": genai.protos.Schema(type=genai.protos.Type.STRING, description="Short description of the expense (e.g. 'dinner', 'taxi')."),
+                "category": genai.protos.Schema(type=genai.protos.Type.STRING, description=f"Expense category. Must be one of: {', '.join(EXPENSE_CATEGORIES)}."),
+                "participant_names": genai.protos.Schema(type=genai.protos.Type.ARRAY, items=genai.protos.Schema(type=genai.protos.Type.STRING), description="Names or emails of people to split with. Use 'all' to include everyone in the group."),
             },
-            "required": ["group_name", "amount", "description"],
-        },
-    },
-    {
-        "name": "get_balances",
-        "description": "Get who owes whom in a group and suggested settlements.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "group_name": {"type": "string", "description": "Name of the group."},
+            required=["group_name", "amount", "description"],
+        ),
+    ),
+    genai.protos.FunctionDeclaration(
+        name="get_balances",
+        description="Get who owes whom in a group and suggested settlements.",
+        parameters=genai.protos.Schema(
+            type=genai.protos.Type.OBJECT,
+            properties={
+                "group_name": genai.protos.Schema(type=genai.protos.Type.STRING, description="Name of the group."),
             },
-            "required": ["group_name"],
-        },
-    },
-    {
-        "name": "get_dashboard",
-        "description": "Get spending statistics and summary for a group: total expenses, category breakdown, per-member spending.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "group_name": {"type": "string", "description": "Name of the group."},
+            required=["group_name"],
+        ),
+    ),
+    genai.protos.FunctionDeclaration(
+        name="get_dashboard",
+        description="Get spending statistics and summary for a group: total expenses, category breakdown, per-member spending.",
+        parameters=genai.protos.Schema(
+            type=genai.protos.Type.OBJECT,
+            properties={
+                "group_name": genai.protos.Schema(type=genai.protos.Type.STRING, description="Name of the group."),
             },
-            "required": ["group_name"],
-        },
-    },
-    {
-        "name": "settle_debt",
-        "description": "Record a payment to settle a debt with another group member.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "group_name": {"type": "string", "description": "Name of the group."},
-                "to_user_name": {"type": "string", "description": "Name or email of the person being paid."},
-                "amount": {"type": "number", "description": "Amount to pay."},
+            required=["group_name"],
+        ),
+    ),
+    genai.protos.FunctionDeclaration(
+        name="settle_debt",
+        description="Record a payment to settle a debt with another group member.",
+        parameters=genai.protos.Schema(
+            type=genai.protos.Type.OBJECT,
+            properties={
+                "group_name": genai.protos.Schema(type=genai.protos.Type.STRING, description="Name of the group."),
+                "to_user_name": genai.protos.Schema(type=genai.protos.Type.STRING, description="Name or email of the person being paid."),
+                "amount": genai.protos.Schema(type=genai.protos.Type.NUMBER, description="Amount to pay."),
             },
-            "required": ["group_name", "to_user_name", "amount"],
-        },
-    },
-    {
-        "name": "list_expenses",
-        "description": "List recent expenses for a group, optionally filtered by search term or category.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "group_name": {"type": "string", "description": "Name of the group."},
-                "search": {"type": "string", "description": "Optional search term to filter expenses by description."},
-                "category": {"type": "string", "description": "Optional category to filter by."},
+            required=["group_name", "to_user_name", "amount"],
+        ),
+    ),
+    genai.protos.FunctionDeclaration(
+        name="list_expenses",
+        description="List recent expenses for a group, optionally filtered by search term or category.",
+        parameters=genai.protos.Schema(
+            type=genai.protos.Type.OBJECT,
+            properties={
+                "group_name": genai.protos.Schema(type=genai.protos.Type.STRING, description="Name of the group."),
+                "search": genai.protos.Schema(type=genai.protos.Type.STRING, description="Optional search term to filter expenses by description."),
+                "category": genai.protos.Schema(type=genai.protos.Type.STRING, description="Optional category to filter by."),
             },
-            "required": ["group_name"],
-        },
-    },
-    {
-        "name": "add_member",
-        "description": "Add a new member to a group by their email address.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "group_name": {"type": "string", "description": "Name of the group."},
-                "email": {"type": "string", "description": "Email address of the person to add."},
+            required=["group_name"],
+        ),
+    ),
+    genai.protos.FunctionDeclaration(
+        name="add_member",
+        description="Add a new member to a group by their email address.",
+        parameters=genai.protos.Schema(
+            type=genai.protos.Type.OBJECT,
+            properties={
+                "group_name": genai.protos.Schema(type=genai.protos.Type.STRING, description="Name of the group."),
+                "email": genai.protos.Schema(type=genai.protos.Type.STRING, description="Email address of the person to add."),
             },
-            "required": ["group_name", "email"],
-        },
-    },
+            required=["group_name", "email"],
+        ),
+    ),
 ]
 
 # ---------------------------------------------------------------------------
@@ -169,16 +161,17 @@ def _exec_add_expense(db: Session, user: User, args: dict) -> tuple[str, dict, s
         category = "other"
 
     participant_names = args.get("participant_names", ["all"])
-    if not participant_names or (len(participant_names) == 1 and participant_names[0].lower() == "all"):
+    if not participant_names or (len(participant_names) == 1 and str(participant_names[0]).lower() == "all"):
         participants = list(group.members)
     else:
         participants = []
         for pname in participant_names:
-            if pname.lower() in ("me", "myself", user.name.lower() if user.name else ""):
+            pname_str = str(pname).lower()
+            if pname_str in ("me", "myself") or (user.name and pname_str == user.name.lower()):
                 if user not in participants:
                     participants.append(user)
             else:
-                participants.append(_find_member(group, pname))
+                participants.append(_find_member(group, str(pname)))
         if user not in participants:
             participants.append(user)
 
@@ -384,23 +377,18 @@ def chat(
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=503, detail="AI chat is not configured. GEMINI_API_KEY is missing.")
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
-    context = _build_context(db, current_user, data.group_id)
-    tools = types.Tool(function_declarations=_FUNCTIONS)
-    config = types.GenerateContentConfig(
-        tools=[tools],
-        system_instruction=SYSTEM_PROMPT + "\n\n" + context,
-        temperature=0.3,
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel(
+        model_name="gemini-2.0-flash",
+        tools=[genai.protos.Tool(function_declarations=_FUNCTIONS)],
+        system_instruction=SYSTEM_PROMPT + "\n\n" + _build_context(db, current_user, data.group_id),
+        generation_config=genai.GenerationConfig(temperature=0.3),
     )
 
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=data.message,
-        config=config,
-    )
+    chat_session = model.start_chat()
+    response = chat_session.send_message(data.message)
 
-    candidate = response.candidates[0]
-    part = candidate.content.parts[0]
+    part = response.candidates[0].content.parts[0]
 
     if part.function_call:
         fc = part.function_call
@@ -413,21 +401,17 @@ def chat(
 
         try:
             action, result_data, summary = executor(db, current_user, fn_args)
-        except (ValueError, Exception) as exc:
+        except Exception as exc:
             return ChatResponse(reply=f"Sorry, I couldn't do that: {exc}", action=fn_name, data={"error": str(exc)})
 
         try:
-            followup = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=[
-                    types.Content(role="user", parts=[types.Part.from_text(text=data.message)]),
-                    types.Content(role="model", parts=[types.Part.from_function_call(name=fn_name, args=fn_args)]),
-                    types.Content(role="user", parts=[types.Part.from_function_response(name=fn_name, response={"result": summary})]),
-                ],
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT + "\n\n" + context,
-                    temperature=0.3,
-                ),
+            followup = chat_session.send_message(
+                genai.protos.Content(parts=[
+                    genai.protos.Part(function_response=genai.protos.FunctionResponse(
+                        name=fn_name,
+                        response={"result": summary},
+                    ))
+                ])
             )
             reply = followup.text or summary
         except Exception:
