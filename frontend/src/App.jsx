@@ -186,7 +186,7 @@ function ChatPanel({ token, selectedGroup, onActionComplete }) {
                 </div>
               </div>
             )}
-          </div>
+      </div>
           <form className="chat-input-bar" onSubmit={handleSend}>
             <input
               type="text"
@@ -198,7 +198,7 @@ function ChatPanel({ token, selectedGroup, onActionComplete }) {
             />
             <button type="submit" disabled={sending || !input.trim()}>Send</button>
           </form>
-        </div>
+      </div>
       )}
     </>
   )

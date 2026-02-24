@@ -375,26 +375,29 @@ def chat(
     current_user: User = Depends(get_current_user),
 ):
     if not GEMINI_API_KEY:
-        raise HTTPException(status_code=503, detail="AI chat is not configured. GEMINI_API_KEY is missing.")
+        return ChatResponse(reply="AI chat is not configured. The GEMINI_API_KEY environment variable is missing.")
 
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash",
-        tools=[genai.protos.Tool(function_declarations=_FUNCTIONS)],
-        system_instruction=SYSTEM_PROMPT + "\n\n" + _build_context(db, current_user, data.group_id),
-        generation_config=genai.GenerationConfig(temperature=0.3),
-    )
-
-    chat_session = model.start_chat()
     try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel(
+            model_name="gemini-2.0-flash",
+            tools=[genai.protos.Tool(function_declarations=_FUNCTIONS)],
+            system_instruction=SYSTEM_PROMPT + "\n\n" + _build_context(db, current_user, data.group_id),
+            generation_config=genai.GenerationConfig(temperature=0.3),
+        )
+
+        chat_session = model.start_chat()
         response = chat_session.send_message(data.message)
     except Exception as exc:
         err_msg = str(exc)
         if "quota" in err_msg.lower() or "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
             return ChatResponse(reply="The AI service is temporarily at capacity. Please try again in a minute.")
-        raise HTTPException(status_code=502, detail=f"AI service error: {err_msg}")
+        return ChatResponse(reply=f"AI service error: {err_msg}")
 
-    part = response.candidates[0].content.parts[0]
+    try:
+        part = response.candidates[0].content.parts[0]
+    except (IndexError, AttributeError):
+        return ChatResponse(reply="I didn't get a response from the AI. Please try again.")
 
     if part.function_call:
         fc = part.function_call
