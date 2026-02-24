@@ -10,5 +10,6 @@ pydantic
 pydantic-settings
 aiosqlite
 email-validator==2.2.0
+google-generativeai
 pytest
 httpx

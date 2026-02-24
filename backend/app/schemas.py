@@ -160,3 +160,15 @@ class DashboardStats(BaseModel):
     category_totals: dict[str, float]
     member_spending: list[dict]
     your_balance: float
+
+
+# ----- Chat -----
+class ChatRequest(BaseModel):
+    message: str
+    group_id: Optional[int] = None
+
+
+class ChatResponse(BaseModel):
+    reply: str
+    action: Optional[str] = None
+    data: Optional[dict] = None

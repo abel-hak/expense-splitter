@@ -120,6 +120,90 @@ function EditExpenseModal({ expense, members, currentUserId, onSave, onCancel, l
   )
 }
 
+/* ---- Chat Panel ---- */
+function ChatPanel({ token, selectedGroup, onActionComplete }) {
+  const [open, setOpen] = useState(false)
+  const [messages, setMessages] = useState([
+    { role: 'ai', text: 'Hi! I can help you manage expenses. Try saying things like:\n\n"Add $50 for dinner"\n"Who owes me?"\n"Show dashboard"' },
+  ])
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const scrollRef = useRef(null)
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+  }, [messages])
+
+  async function handleSend(e) {
+    e.preventDefault()
+    const text = input.trim()
+    if (!text || sending) return
+    setInput('')
+    setMessages((prev) => [...prev, { role: 'user', text }])
+    setSending(true)
+    try {
+      const res = await fetch(`${API_BASE}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ message: text, group_id: selectedGroup?.id || null }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => null)
+        throw new Error(err?.detail || 'Chat request failed')
+      }
+      const data = await res.json()
+      setMessages((prev) => [...prev, { role: 'ai', text: data.reply, action: data.action }])
+      if (data.action) onActionComplete(data.action)
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: 'ai', text: `Error: ${err.message}` }])
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <>
+      <button className="chat-toggle" onClick={() => setOpen((o) => !o)} title="AI Chat Assistant">
+        {open ? '\u2715' : '\u{1F4AC}'}
+      </button>
+      {open && (
+        <div className="chat-panel">
+          <div className="chat-header">
+            <span className="chat-header-title">AI Assistant</span>
+            {selectedGroup && <span className="chat-header-group">{selectedGroup.name}</span>}
+          </div>
+          <div className="chat-messages" ref={scrollRef}>
+            {messages.map((msg, i) => (
+              <div key={i} className={`chat-bubble chat-${msg.role}`}>
+                <div className="chat-bubble-text">{msg.text}</div>
+                {msg.action && <span className="chat-action-badge">{msg.action.replace('_', ' ')}</span>}
+              </div>
+            ))}
+            {sending && (
+              <div className="chat-bubble chat-ai">
+                <div className="chat-typing">
+                  <span /><span /><span />
+                </div>
+              </div>
+            )}
+          </div>
+          <form className="chat-input-bar" onSubmit={handleSend}>
+            <input
+              type="text"
+              placeholder="Ask anything about expenses..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              disabled={sending}
+              autoFocus
+            />
+            <button type="submit" disabled={sending || !input.trim()}>Send</button>
+          </form>
+        </div>
+      )}
+    </>
+  )
+}
+
 /* ---- Dashboard ---- */
 function Dashboard({ stats, getUserName }) {
   if (!stats) return null
@@ -553,6 +637,25 @@ function App() {
     } catch (err) { addToast(err.message) }
   }
 
+  async function handleChatAction(action) {
+    if (!selectedGroup) {
+      await loadGroups(token)
+      return
+    }
+    if (action === 'add_expense' || action === 'list_expenses') {
+      const exps = await apiRequest(`/expenses?group_id=${selectedGroup.id}`, 'GET', undefined, token).catch(() => null)
+      if (exps) setExpenses(exps)
+    }
+    if (action === 'settle_debt') {
+      loadSettlements()
+    }
+    if (action === 'add_member') {
+      const freshGroup = await apiRequest(`/groups/${selectedGroup.id}`, 'GET', undefined, token).catch(() => null)
+      if (freshGroup) setSelectedGroup(freshGroup)
+    }
+    await loadGroups(token)
+  }
+
   useEffect(() => {
     if (splitMode === 'custom' && selectedGroup?.members) {
       const init = {}
@@ -630,6 +733,7 @@ function App() {
         </main>
       ) : (
         <>
+          <ChatPanel token={token} selectedGroup={selectedGroup} onActionComplete={handleChatAction} />
           <div className="mobile-tabs">
             <button className={mobileTab === 'groups' ? 'active' : ''} onClick={() => setMobileTab('groups')}>Groups</button>
             <button className={mobileTab === 'expenses' ? 'active' : ''} onClick={() => setMobileTab('expenses')}>Expenses</button>

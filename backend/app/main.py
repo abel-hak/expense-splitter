@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base, get_db
-from app.routers import auth, groups, expenses, settlements
+from app.routers import auth, groups, expenses, settlements, chat
 
 Base.metadata.create_all(bind=engine)
 
@@ -28,6 +28,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(groups.router, prefix="/api")
 app.include_router(expenses.router, prefix="/api")
 app.include_router(settlements.router, prefix="/api")
+app.include_router(chat.router, prefix="/api")
 
 
 @app.get("/")
